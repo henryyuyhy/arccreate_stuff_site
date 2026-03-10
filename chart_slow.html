@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arccreate 谱面变速工具</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 40px;
+            max-width: 500px;
+            width: 100%;
+        }
+
+        h1 {
+            color: #333;
+            font-size: 24px;
+            margin-bottom: 8px;
+            text-align: center;
+        }
+
+        .subtitle {
+            color: #666;
+            font-size: 14px;
+            text-align: center;
+            margin-bottom: 32px;
+        }
+
+        .form-group {
+            margin-bottom: 24px;
+        }
+
+        label {
+            display: block;
+            color: #333;
+            font-weight: 600;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+
+        .file-upload {
+            border: 2px dashed #ddd;
+            border-radius: 8px;
+            padding: 32px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .file-upload:hover {
+            border-color: #667eea;
+            background: #f8f9ff;
+        }
+
+        .file-upload.dragover {
+            border-color: #667eea;
+            background: #f0f2ff;
+        }
+
+        .file-icon {
+            font-size: 40px;
+            margin-bottom: 12px;
+        }
+
+        .file-text {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .file-name {
+            color: #667eea;
+            font-weight: 600;
+            margin-top: 8px;
+            word-break: break-all;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        input[type="number"] {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s ease;
+        }
+
+        input[type="number"]:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 14px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            margin-bottom: 12px;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-secondary {
+            background: #f0f0f0;
+            color: #333;
+            display: none;
+        }
+
+        .btn-secondary:hover {
+            background: #e0e0e0;
+        }
+
+        .btn-secondary.show {
+            display: block;
+        }
+
+        .status {
+            text-align: center;
+            margin-top: 20px;
+            font-size: 14px;
+            min-height: 20px;
+        }
+
+        .status.success {
+            color: #10b981;
+        }
+
+        .status.error {
+            color: #ef4444;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Arccreate 谱面变速工具</h1>
+        <p class="subtitle">严格按操作清单执行，无额外校验</p>
+
+        <div class="form-group">
+            <label>选择谱面文件</label>
+            <div class="file-upload" id="fileUpload">
+                <div class="file-icon">📁</div>
+                <div class="file-text">点击或拖拽文件到此处</div>
+                <div class="file-name" id="fileName"></div>
+            </div>
+            <input type="file" id="fileInput" accept=".aff,.txt,*">
+        </div>
+
+        <div class="form-group">
+            <label>变速倍率 (例: 2.0=两倍速, 0.5=半速)</label>
+            <input type="number" id="speedInput" step="0.01" min="0.01" value="1.0" placeholder="请输入变速倍率">
+        </div>
+
+        <button class="btn btn-primary" id="processBtn" disabled>处理谱面</button>
+        <button class="btn btn-secondary" id="downloadBtn">下载处理后的谱面</button>
+
+        <div class="status" id="status"></div>
+    </div>
+
+    <script>
+        let fileContent = '';
+        let processedContent = '';
+        let originalFileName = '';
+
+        const fileUpload = document.getElementById('fileUpload');
+        const fileInput = document.getElementById('fileInput');
+        const fileName = document.getElementById('fileName');
+        const speedInput = document.getElementById('speedInput');
+        const processBtn = document.getElementById('processBtn');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const status = document.getElementById('status');
+
+        // 文件上传处理
+        fileUpload.addEventListener('click', () => fileInput.click());
+        fileUpload.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            fileUpload.classList.add('dragover');
+        });
+        fileUpload.addEventListener('dragleave', () => fileUpload.classList.remove('dragover'));
+        fileUpload.addEventListener('drop', (e) => {
+            e.preventDefault();
+            fileUpload.classList.remove('dragover');
+            if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+        });
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length) handleFile(e.target.files[0]);
+        });
+
+        function handleFile(file) {
+            originalFileName = file.name;
+            fileName.textContent = file.name;
+            processBtn.disabled = false;
+            status.textContent = '';
+            status.className = 'status';
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                fileContent = e.target.result;
+                showStatus('文件读取成功', 'success');
+            };
+            reader.onerror = () => showStatus('文件读取失败', 'error');
+            reader.readAsText(file);
+        }
+
+        function showStatus(message, type) {
+            status.textContent = message;
+            status.className = 'status ' + type;
+        }
+
+        // 核心处理入口
+        processBtn.addEventListener('click', () => {
+            const speedScale = parseFloat(speedInput.value);
+            if (!fileContent) {
+                showStatus('请先选择谱面文件', 'error');
+                return;
+            }
+
+            try {
+                processedContent = processAffStrict(fileContent, speedScale);
+                downloadBtn.classList.add('show');
+                showStatus('处理完成', 'success');
+            } catch (error) {
+                showStatus('处理失败: ' + error.message, 'error');
+                console.error(error);
+            }
+        });
+
+        // ==============================================
+        // 严格按照操作清单执行的核心处理函数
+        // ==============================================
+        function processAffStrict(content, speedScale) {
+            const timeScale = 1 / speedScale;
+            const bpmScale = speedScale;
+            const lines = content.split('\n');
+            const result = [];
+
+            for (let line of lines) {
+                result.push(processLineStrict(line, timeScale, bpmScale));
+            }
+
+            return result.join('\n');
+        }
+
+        // 逐行严格处理
+        function processLineStrict(line, timeScale, bpmScale) {
+            const trimmed = line.trim();
+            // 空行、注释、分隔线、Timing Group头尾直接原样保留
+            if (!trimmed) return line;
+            if (trimmed.startsWith('//')) return line;
+            if (trimmed === '-') return line;
+            if (trimmed.startsWith('timinggroup(')) return line;
+            if (trimmed === '};') return line;
+
+            // 提取前导缩进
+            const leadingSpace = line.match(/^\s*/)[0];
+            const content = trimmed;
+
+            // 1. 处理 AudioOffset
+            if (content.startsWith('AudioOffset:')) {
+                const match = content.match(/^AudioOffset:(-?\d+)$/);
+                if (match) {
+                    const originalVal = parseInt(match[1]);
+                    const newVal = Math.round(originalVal * timeScale);
+                    return `${leadingSpace}AudioOffset:${newVal}`;
+                }
+            }
+
+            // 2. 处理 Timing
+            if (content.startsWith('timing(')) {
+                const params = getParams(content);
+                if (params && params.length >= 3) {
+                    // 修改 Offset (第1个参数)
+                    params[0] = Math.round(parseInt(params[0]) * timeScale).toString();
+                    // 修改 BPM (第2个参数)
+                    params[1] = (parseFloat(params[1]) * bpmScale).toFixed(2);
+                    // 重组
+                    return leadingSpace + rebuildStatement(content, 'timing', params);
+                }
+            }
+
+            // 3. 处理 Tap
+            if (/^\(\d+,\d+\);$/.test(content)) {
+                const params = content.slice(1, -2).split(',');
+                if (params.length === 2) {
+                    // 修改 t (第1个参数)
+                    params[0] = Math.round(parseInt(params[0]) * timeScale).toString();
+                    return `${leadingSpace}(${params[0]},${params[1]});`;
+                }
+            }
+
+            // 4. 处理 Hold
+            if (content.startsWith('hold(')) {
+                const params = getParams(content);
+                if (params && params.length >= 3) {
+                    // 修改 t1 (第1个)
+                    params[0] = Math.round(parseInt(params[0]) * timeScale).toString();
+                    // 修改 t2 (第2个)
+                    params[1] = Math.round(parseInt(params[1]) * timeScale).toString();
+                    return leadingSpace + rebuildStatement(content, 'hold', params);
+                }
+            }
+
+            // 5. 处理 Arc + Arctap（修复核心问题，仅修改此段）
+            if (content.startsWith('arc(')) {
+                // 提取 Arc 主体的所有参数（直接拆分，不依赖工具函数）
+                const arcMatch = content.match(/^arc\(([^)]+)\)(.*)$/);
+                if (arcMatch) {
+                    const arcParamsStr = arcMatch[1];
+                    const afterArcStr = arcMatch[2];
+                    const arcParams = arcParamsStr.split(',').map(p => p.trim());
+                    
+                    // 仅修改 Arc 的 t1（第1个参数）和 t2（第2个参数）
+                    if (arcParams.length >= 2) {
+                        // 修改 t1
+                        arcParams[0] = Math.round(parseInt(arcParams[0]) * timeScale).toString();
+                        // 修改 t2
+                        arcParams[1] = Math.round(parseInt(arcParams[1]) * timeScale).toString();
+                    }
+                    
+                    // 重组 Arc 主体
+                    const newArcBody = `arc(${arcParams.join(',')})`;
+                    
+                    // 处理 Arctap 部分（全局替换，确保所有 arctap 都被修改）
+                    let newAfterArc = afterArcStr;
+                    // 正则匹配所有 arctap(数字) 格式，无遗漏
+                    newAfterArc = newAfterArc.replace(/arctap\((\d+)\)/g, (match, tnStr) => {
+                        const tn = parseInt(tnStr);
+                        const newTn = Math.round(tn * timeScale);
+                        return `arctap(${newTn})`;
+                    });
+                    
+                    // 拼接最终结果，保留缩进
+                    return leadingSpace + newArcBody + newAfterArc;
+                }
+            }
+
+            // 6. 处理 Camera
+            if (content.startsWith('camera(')) {
+                const params = getParams(content);
+                if (params && params.length >= 9) {
+                    // 修改 t (第1个)
+                    params[0] = Math.round(parseInt(params[0]) * timeScale).toString();
+                    // 修改 duration (最后1个)
+                    const lastIdx = params.length - 1;
+                    params[lastIdx] = Math.round(parseInt(params[lastIdx]) * timeScale).toString();
+                    return leadingSpace + rebuildStatement(content, 'camera', params);
+                }
+            }
+
+            // 7. 处理 Scene Control
+            if (content.startsWith('scenecontrol(')) {
+                const params = getParams(content);
+                if (params && params.length >= 2) {
+                    // 通用：修改 t (第1个)
+                    params[0] = Math.round(parseInt(params[0]) * timeScale).toString();
+                    
+                    const type = params[1];
+                    // 特殊：修改 mt (第3个)，仅针对指定类型
+                    if (['trackdisplay', 'redline', 'arcahvdistort', 'arcahvdebris', 'enwidencamera', 'enwidenlanes'].includes(type)) {
+                        if (params.length >= 4) {
+                            params[2] = (parseFloat(params[2]) * timeScale).toFixed(2);
+                        }
+                    }
+                    return leadingSpace + rebuildStatement(content, 'scenecontrol', params);
+                }
+            }
+
+            // 8. 处理 Flick
+            if (content.startsWith('flick(')) {
+                const params = getParams(content);
+                if (params && params.length >= 5) {
+                    // 修改 t (第1个)
+                    params[0] = Math.round(parseInt(params[0]) * timeScale).toString();
+                    return leadingSpace + rebuildStatement(content, 'flick', params);
+                }
+            }
+
+            // 无法识别的行，原样返回
+            return line;
+        }
+
+        // 工具函数：提取括号内的参数数组
+        function getParams(content) {
+            const openIdx = content.indexOf('(');
+            const closeIdx = content.lastIndexOf(')');
+            if (openIdx === -1 || closeIdx === -1) return null;
+            const paramStr = content.slice(openIdx + 1, closeIdx);
+            return paramStr.split(',').map(p => p.trim());
+        }
+
+        // 工具函数：重组语句，保留原语句的结尾分号
+        function rebuildStatement(originalContent, prefix, newParams) {
+            const endsWithSemicolon = originalContent.trim().endsWith(';');
+            const base = `${prefix}(${newParams.join(',')})`;
+            return endsWithSemicolon ? base + ';' : base;
+        }
+
+        // 下载功能
+        downloadBtn.addEventListener('click', () => {
+            if (!processedContent) {
+                showStatus('没有可下载的内容', 'error');
+                return;
+            }
+
+            const blob = new Blob([processedContent], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            
+            // 生成新文件名
+            const speedScale = speedInput.value;
+            const nameParts = originalFileName.split('.');
+            const ext = nameParts.length > 1 ? nameParts.pop() : '';
+            const baseName = nameParts.join('.');
+            a.download = ext ? `${baseName}_${speedScale}x.${ext}` : `${baseName}_${speedScale}x`;
+            
+            a.href = url;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            showStatus('下载已开始', 'success');
+        });
+    </script>
+</body>
+</html>
