@@ -1,0 +1,1 @@
+importScripts('audio-processor-core.js');self.addEventListener('message',(e)=>{const{sampleRate,numChannels,channelsData,playbackRate}=e.data;try{const result=AudioProcessor.processRaw(channelsData,sampleRate,numChannels,playbackRate);self.postMessage({type:'done',result})}catch(err){self.postMessage({type:'error',message:err.message})}});
